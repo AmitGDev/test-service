@@ -1,0 +1,219 @@
+---
+Checks: >
+  -*,
+  bugprone-*,
+  boost-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  google-*,
+  llvm-*,
+  misc-*,
+  # modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+
+  # ---- Modernize checks  (full list, instead of: modernize-*) ----
+  modernize-avoid-bind,
+  modernize-avoid-c-arrays,
+  modernize-avoid-seekg-longjmp,
+  modernize-avoid-variable-length-arrays,
+  modernize-concat-nested-namespaces,
+  modernize-convert,
+  modernize-deprecated-ios-base-aliases,
+  modernize-deprecated-headers,
+  modernize-loop-convert,
+  modernize-macro-to-enum,
+  modernize-make-shared,
+  modernize-make-unique,
+  modernize-pass-by-value,
+  modernize-raw-string-literal,
+  modernize-redundant-void-arg,
+  modernize-replace-auto-ptr,
+  modernize-replace-disallow-copy-and-assign-macro,
+  modernize-return-braced-init-list,
+  modernize-shrink-to-fit,
+  modernize-trailing-return-type, # Controversial
+  modernize-type-traits,
+  modernize-unary-static-assert,
+  modernize-use-auto,
+  modernize-use-bool-literals,
+  modernize-use-default-member-init,
+  modernize-use-emplace,
+  modernize-use-equals-default,
+  modernize-use-equals-delete,
+  modernize-use-nodiscard, # Noisy
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-transparent-functors,
+  modernize-use-uncaught-exceptions,
+  modernize-use-using,
+  modernize-use-ranges,
+  modernize-use-std-print,
+  modernize-use-std-starts-ends-with,
+  modernize-use-std-span,
+  modernize-use-std-function,
+  modernize-use-std-any,
+  modernize-use-std-optional,
+  modernize-use-std-variant,
+  modernize-use-noexcept,
+  modernize-use-std-exchange,
+  modernize-use-std-filesystem,
+  modernize-use-std-lock,
+
+  # Optional strictness - HICPP checks
+  hicpp-use-override,
+  hicpp-explicit-conversions,
+  hicpp-deprecated-headers,
+  hicpp-braces-around-statements,
+  hicpp-exception-baseclass,
+  hicpp-signed-bitwise,
+  # concurrency-*,
+  # openmp-*,
+
+  # Additional checks for security and best practices
+  cert-err58-cpp,
+  cert-oop54-cpp,
+
+  # ---- Disable duplicate checks (aliases) ----
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-c-arrays,
+  -modernize-avoid-c-arrays,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -misc-non-private-member-variables-in-classes,
+  -cppcoreguidelines-use-default-member-init,
+  -modernize-use-default-member-init,
+  -llvm-else-after-return,
+
+  # Additional HICPP alias disables
+  -hicpp-avoid-c-arrays,
+  -hicpp-avoid-goto,
+  -hicpp-no-array-decay,
+  -hicpp-uppercase-literal-suffix,
+  -hicpp-vararg,
+  -hicpp-static-assert,
+
+  # ---- Disable overly strict checks ----
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+
+  # ---- Disable non-Google framework-specific style checks ----
+  -llvm-header-guard,
+
+  # ---- Disable overly noisy readability checks ----
+  -readability-implicit-bool-conversion,
+
+  # ---- Disable noisy checks ----
+  -modernize-use-nodiscard,
+  -bugprone-easily-swappable-parameters,  # VERY noisy with common patterns
+
+  # ---- Disable specific analyzer false positives ----
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -clang-analyzer-cplusplus.Move
+
+CheckOptions:
+  # Cognitive complexity: allow macros, set higher threshold
+  - key: readability-function-cognitive-complexity.IgnoreMacros
+    value: true
+  - key: readability-function-cognitive-complexity.Threshold
+    value: 50
+
+  # Modernize: structured bindings
+  - key: modernize-use-structured-bindings.IgnoreMacros
+    value: true
+
+  # Ignore magic numbers in test/mocks
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnoredFilePatterns
+    value: '.*(test|unittest|mock).*'
+
+  # Performance: allow trivial copies for certain types
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'std::string_view;std::unique_ptr;std::shared_ptr;std::optional'
+
+  # Prefer std::format/print over iostreams (requires C++20)
+  - key: modernize-use-std-format.CheckIOStreams
+    value: true
+
+  # Prefer std::span over pointer+size (requires C++20)
+  - key: modernize-use-std-span.MinimalArraySize
+    value: 3
+
+  # ===== Google C++ Style Guide Naming Conventions =====
+
+  # Variables: snake_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+
+  # Function parameters: snake_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+
+  # Free functions: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: CamelCase
+
+  # Class/struct methods: CamelCase
+  - key: readability-identifier-naming.MethodCase
+    value: CamelCase
+
+  # Class data members: snake_case with trailing underscore
+  - key: readability-identifier-naming.ClassMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassMemberSuffix
+    value: _
+
+  # Struct data members: snake_case (NO trailing underscore per Google style)
+  # LIMITATION: Clang-tidy can only enforce case style, NOT suffix absence
+  # Does NOT reject: width_, height_ (has underscore - requires external tooling)
+  # Use pre-commit hooks to enforce "no trailing underscore" requirement
+  - key: readability-identifier-naming.StructMemberCase
+    value: lower_case
+
+  # Constexpr variables: kCamelCase
+  - key: readability-identifier-naming.ConstexprVariableCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: k
+
+  # Enum constants: kCamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantPrefix
+    value: k
+
+  # Scoped enum constants: kCamelCase
+  - key: readability-identifier-naming.ScopedEnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ScopedEnumConstantPrefix
+    value: k
+
+  # Classes: CamelCase
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+
+  # Structs: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+
+  # Enums: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+
+  # Namespaces: snake_case
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+
+# Check all headers (portable across projects, filters system headers automatically)
+HeaderFilterRegex: '.*'
+
+# Treat all warnings as errors in CI
+WarningsAsErrors: '*'
+
+# Enable analysis of temporary destructors (catches RAII issues)
+# AnalyzeTemporaryDtors: true
+
+# Use .clang-format file for style
+FormatStyle: file
