@@ -1,0 +1,199 @@
+name: "Static Code Analysis (x64 Debug & Release C++23)"
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+  schedule:
+    - cron: "0 6 * * 0" # Every Sunday at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.preset }})
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: ["x64-debug", "x64-release"]
+
+    steps:
+      # 1. Checkout the repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install LLVM (official GitHub release — clang-format + clang-tidy from one build)
+      # Chocolatey (clang-tidy) and PyPI (clang-format) were pulling mismatched
+      # versions from different sources. The official win64 .msi gives both
+      # tools from a single signed release, avoiding version skew between them.
+      - name: Install LLVM
+        shell: pwsh
+        env:
+          LLVM_VERSION: "23.1.0"
+        run: |
+          $ver = $env:LLVM_VERSION
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$ver/LLVM-$ver-win64.msi"
+          $msi = "$env:RUNNER_TEMP\LLVM.msi"
+
+          Write-Host "Downloading LLVM $ver..."
+          Invoke-WebRequest -Uri $url -OutFile $msi
+
+          Write-Host "Installing..."
+          $proc = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /quiet /norestart" -Wait -PassThru
+          if ($proc.ExitCode -ne 0) {
+            Write-Host "msiexec failed with exit code $($proc.ExitCode)" -ForegroundColor Red
+            exit 1
+          }
+
+          echo "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & "C:\Program Files\LLVM\bin\clang-format.exe" --version
+          & "C:\Program Files\LLVM\bin\clang-tidy.exe" --version
+
+      # 3. Run clang-format
+      - name: Run clang-format
+        shell: pwsh
+        run: |
+          Write-Host "Running clang-format on source files with .clang-format config..."
+
+          # Use git ls-files to get only tracked files (respects .gitignore)
+          $files = @(git ls-files '*.cpp' '*.h' '*.hpp' '*.cc' '*.cxx' | ForEach-Object {
+            Get-Item $_ -ErrorAction SilentlyContinue
+          } | Where-Object { $_ -ne $null })
+
+          if ($files.Count -eq 0) {
+            Write-Host "No C++ source files found to check." -ForegroundColor Yellow
+            exit 0
+          }
+
+          Write-Host "Found $($files.Count) file(s) to check"
+
+          $formattingIssues = @()
+
+          foreach ($file in $files) {
+            Write-Host "Checking format: $($file.FullName)"
+
+            # Run clang-format in dry-run mode to check for differences
+            $output = clang-format --dry-run --Werror $file.FullName 2>&1
+
+            if ($LASTEXITCODE -ne 0) {
+              $formattingIssues += $file.FullName
+              Write-Host "  Formatting issues found" -ForegroundColor Red
+              Write-Host $output
+            } else {
+              Write-Host "  Properly formatted" -ForegroundColor Green
+            }
+          }
+
+          if ($formattingIssues.Count -gt 0) {
+            Write-Host "`nclang-format found formatting issues in $($formattingIssues.Count) file(s):" -ForegroundColor Red
+            $formattingIssues | ForEach-Object {
+              Write-Host "  - $_" -ForegroundColor Yellow
+            }
+
+            Write-Host "`nTo fix these issues locally, run:" -ForegroundColor Cyan
+            Write-Host "  clang-format -i <file>" -ForegroundColor Cyan
+            exit 1
+          }
+
+          Write-Host "`nAll files are properly formatted!" -ForegroundColor Green
+
+      # 4. Initialize CodeQL
+      #- name: Initialize CodeQL
+      #  uses: github/codeql-action/init@v4
+      #  with:
+      #    languages: cpp
+
+      # 5. Set up Ninja
+      - name: Set up Ninja
+        uses: seanmiddleditch/gha-setup-ninja@v5
+
+      # 6. Set up MSVC developer environment (cl.exe on PATH)
+      # Ninja is a single-config generator with no MSBuild integration, so unlike
+      # the Visual Studio generator it does not locate the MSVC toolchain itself.
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # 7. Configure CMake using the selected preset
+      - name: Configure CMake (${{ matrix.preset }})
+        shell: cmd
+        run: |
+          echo Configuring CMake with preset ${{ matrix.preset }}...
+          cmake --preset ${{ matrix.preset }}
+
+      # 8. Build the project with CMake
+      - name: Build project (${{ matrix.preset }})
+        shell: cmd
+        run: |
+          echo Building with CMake preset ${{ matrix.preset }}...
+          cmake --build --preset ${{ matrix.preset }} --parallel
+
+      # 9. Run clang-tidy against the real compile database
+      - name: Run clang-tidy
+        shell: pwsh
+        run: |
+          $buildDir = "build/${{ matrix.preset }}"
+          $compileCommands = "$buildDir/compile_commands.json"
+
+          if (-not (Test-Path $compileCommands)) {
+            Write-Host "ERROR: $compileCommands not found." -ForegroundColor Red
+            exit 1
+          }
+
+          # Show the actual config clang-tidy is using
+          Write-Host "clang-tidy configuration:"
+          clang-tidy --dump-config
+
+          # Find all .cpp files
+          $files = Get-ChildItem -Path src -Include *.cpp -Recurse -ErrorAction SilentlyContinue
+
+          if ($files.Count -eq 0) {
+            Write-Host "ERROR: No source files found to analyze" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "Found $($files.Count) source file(s) to analyze`n"
+
+          $issueCount = 0
+          foreach ($file in $files) {
+            Write-Host "Checking $($file.FullName)"
+
+            # -p points clang-tidy at the compile database so each file is
+            # analyzed with the exact flags CMake actually used to build it,
+            # rather than a hand-reconstructed set of defines and includes.
+            $output = clang-tidy -p $buildDir $file.FullName 2>&1
+
+            # Check if clang-tidy found issues
+            if ($LASTEXITCODE -ne 0) {
+              $issueCount++
+              Write-Host "Issues found in $($file.Name)" -ForegroundColor Yellow
+              Write-Host $output
+            }
+          }
+
+          Write-Host "`nclang-tidy completed. Files with issues: $issueCount" -ForegroundColor $(if ($issueCount -gt 0) { "Yellow" } else { "Green" })
+          exit $(if ($issueCount -gt 0) { 1 } else { 0 })
+
+      # 10. Perform CodeQL Analysis
+      #- name: Perform CodeQL Analysis
+      #  uses: github/codeql-action/analyze@v4
+      #  with:
+      #    category: "/language:cpp/config:${{ matrix.preset }}"
+
+      # 11. Upload build artifacts for debugging
+      - name: Upload build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.preset }}
+          path: |
+            **/*.log
+            build/**/*.log
+          retention-days: 7
