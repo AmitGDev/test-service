@@ -74,6 +74,16 @@ install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
 )
 
+# ---- compile_commands.json for clangd ----
+# clangd only reads from a single CompilationDatabase directory (see .clangd),
+# so mirror whichever preset was just built to a fixed root-level location.
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_BINARY_DIR}/compile_commands.json
+        ${CMAKE_SOURCE_DIR}/build/compile_commands.json
+    COMMENT "Syncing compile_commands.json for clangd"
+)
+
 # ---- Configuration summary ----
 message(STATUS "")
 message(STATUS "${PROJECT_NAME} Configuration:")
