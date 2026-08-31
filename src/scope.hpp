@@ -61,14 +61,24 @@ template <typename F>
 class scope_exit final {  // NOLINT(readability-identifier-naming)
  public:
   // The stored callable must not throw when invoked by the destructor.
+  // This is an unconditional class invariant: every instance is destroyed
+  // exactly once, and the destructor's own noexcept guarantee depends on
+  // this holding regardless of which constructor built the object.
   static_assert(std::is_nothrow_invocable_v<F&>);
 
-  // Copying would give two guards ownership of the same cleanup action, causing
-  // it to run more than once. Copying is therefore disabled.
+  // Copying would give two guards ownership of the same cleanup action,
+  // causing it to run more than once. Copying is therefore disabled.
   scope_exit(const scope_exit&) = delete;
   scope_exit& operator=(const scope_exit&) = delete;
 
   SCOPE_EXIT_SUPPRESS_NOEXCEPT_FALSE_POSITIVE_BEGIN
+
+  // The catch block below invokes the callable through a const reference on
+  // copy failure, so it must also be invocable in that const-qualified
+  // form; this is a precondition of this constructor only, not of the
+  // class as a whole (a mutable-lambda F can still be used via the F&&
+  // overload below).
+  static_assert(std::is_nothrow_invocable_v<const F&>);
 
   // Allows construction from an lvalue callable by copying it into the guard.
   explicit scope_exit(const F& function) noexcept(
