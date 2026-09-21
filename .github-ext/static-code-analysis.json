@@ -1,0 +1,10 @@
+{
+  "os": [
+    "windows-latest"
+  ],
+  "configurations": [
+    "Debug",
+    "Release"
+  ],
+  "codeql": true
+}
