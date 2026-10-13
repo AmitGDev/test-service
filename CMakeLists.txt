@@ -24,6 +24,13 @@ file(GLOB PROJECT_SOURCES CONFIGURE_DEPENDS src/*.cpp)
 # ---- Executable ----
 add_executable(${PROJECT_NAME} ${PROJECT_SOURCES})
 
+target_compile_definitions(
+    ${PROJECT_NAME}
+    PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0A00
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE Advapi32 Dbghelp Shell32 Wtsapi32)
+
 # ---- MSVC runtime ----
 if(MSVC)
     set_property(
